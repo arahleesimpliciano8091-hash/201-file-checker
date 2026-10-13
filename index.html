@@ -93,8 +93,8 @@ table.map select{width:100%}
 .detail{padding:12px;min-width:0;display:flex;flex-direction:column;gap:12px}
 .dgrid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start}
 @media (max-width:1180px){.dgrid{grid-template-columns:minmax(0,1fr)}}
-.imgwrap{border:1px solid var(--line);border-radius:6px;background:#222;overflow:auto;max-height:76vh}
-.imgwrap canvas{display:block;width:var(--zoom,100%);max-width:none;height:auto;cursor:pointer}
+.imgwrap{border:1px solid var(--line);border-radius:6px;background:var(--panel2);overflow:auto;max-height:76vh}
+.imgwrap canvas{display:block;min-height:0;width:var(--zoom,100%);max-width:none;height:auto;cursor:pointer}
 .namecrop{border:1px solid var(--line);border-radius:6px;background:#fff;overflow:hidden}
 .namecrop canvas{display:block;width:100%;height:auto}
 .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
@@ -165,7 +165,7 @@ kbd{font-family:var(--mono);font-size:11.5px;background:var(--panel2);border:1px
         <div class="row mt small"><button class="btn sm" id="folderBtn" type="button">Pumili ng folder</button><input id="folderP" type="file" webkitdirectory multiple hidden>
           <label class="row" style="gap:4px"><input type="checkbox" id="useFname" checked> Gamitin ang filename bilang pangalan kung tugma</label></div>
         <div class="row mt"><button class="btn primary" id="goBtn" disabled>Simulan ang pagbasa</button><button class="btn" id="pauseBtn" hidden>I-pause</button>
-          <label class="small row" style="gap:4px">Sabay-sabay: <select id="conc"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>6</option></select></label></div>
+          <label class="small row" style="gap:4px">Sabay-sabay: <select id="conc"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>6</option></select></label></div>
         <div class="mt" id="progBox" hidden>
           <div class="bar"><i id="progBar"></i></div>
           <div class="small muted mt" id="progTxt"></div>
@@ -635,7 +635,7 @@ function renderStats(){
   $('goBtn').disabled=S.running||!S.results.some(r=>r.status==='queued')||!S.xbuf;
   if(!S.xbuf&&S.results.length)$('goBtn').title='Mag-upload muna ng Excel';
 }
-function updateUI(){for(const r of S.results)if(r.status==='done')matchResult(r); computeExistingCells(); renderList();renderStats();if($('paneSummary').hidden===false)renderSummary();renderDetail()}
+function updateUI(){computeExistingCells(); renderList();renderStats();if($('paneSummary').hidden===false)renderSummary();renderDetail()}
 function computeExistingCells(){ // cache which excel columns already have values per name (from loaded workbook buffer snapshot)
   // existing cells are read once in loadExcel via S.names[i].cells (set lazily below)
 }
@@ -654,7 +654,7 @@ async function renderDetail(force){
    <div class="row"><b style="font-size:15px;min-width:0;overflow-wrap:anywhere">${esc(r.fileName)}</b><span class="sp" style="flex:1"></span>
      <button class="btn sm" id="prevBtn">← Nauna</button><button class="btn sm" id="nextBtn">Susunod →</button></div>
    <div class="dgrid">
-     <div style="min-width:0"><div class="imgwrap"><canvas id="pageCv"></canvas></div><div class="row small mt"><label class="row" style="gap:6px">Zoom <input type="range" id="zoom" min="100" max="300" value="100" step="10"></label></div><div class="small muted">I-click ang kahon sa litrato para palitan ang ✓. Berde = may ✓, dilaw = hindi sigurado, abo = wala.</div></div>
+     <div style="min-width:0"><div class="imgwrap"><div id="pgLoad" class="small" style="padding:24px;color:#ddd">Kinukuha ang litrato…</div><canvas id="pageCv"></canvas></div><div class="row small mt"><label class="row" style="gap:6px">Zoom <input type="range" id="zoom" min="100" max="300" value="100" step="10"></label></div><div class="small muted">I-click ang kahon sa litrato para palitan ang ✓. Berde = may ✓, dilaw = hindi sigurado, abo = wala.</div></div>
      <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
        <div class="namecrop" id="ncWrap"><canvas id="nameCv"></canvas></div>
        <div class="field"><label>Pangalan sa Excel (i-type para maghanap)</label>
@@ -719,10 +719,19 @@ function updateDetailDynamic(r){
   $('checks').onchange=e=>{const i=+e.target.dataset.ci; r.items[i].state=e.target.checked?'checked':'empty'; r.items[i].manual=true; r.edited=true; r.auto=false; updateDetailDynamic(r);drawOverlayOnly(r);renderList();renderStats()};
   $('okBtn').disabled=r.match==null; $('okBtn').textContent=r.decision==='confirmed'?'Nakumpirma na ✓':'Kumpirmahin';
 }
+const pageCache=new Map();
+async function getPage(r){
+  if(pageCache.has(r.id)){const c=pageCache.get(r.id);pageCache.delete(r.id);pageCache.set(r.id,c);return c}
+  const c0=await baseCanvas(r.file,r.rot); const c1=deskew(c0,r.angle);
+  pageCache.set(r.id,c1); while(pageCache.size>6)pageCache.delete(pageCache.keys().next().value); return c1;
+}
 async function drawPage(r,token){
   const cv=$('pageCv'); if(!cv)return;
-  const c0=await baseCanvas(r.file,r.rot); const c1=deskew(c0,r.angle); if(token!==detailToken)return;
+  let c1; try{c1=await getPage(r)}catch(e){const l=$('pgLoad');if(l)l.textContent='Hindi mabuksan ang litrato: '+(e.message||e);return}
+  if(token!==detailToken)return;
+  const ld=$('pgLoad'); if(ld)ld.hidden=true;
   curPage=c1; cv.width=c1.width;cv.height=c1.height; drawOverlay(r);
+  setTimeout(()=>{const l=listFor(),i=l.findIndex(x=>x.id===r.id),n=l[i+1]; if(n&&n.status==='done'&&token===detailToken)getPage(n).catch(()=>{})},400);
   const nc=$('nameCv'); if(r.nameCrop){const n=r.nameCrop; nc.width=Math.round(n.w);nc.height=Math.round(n.h); nc.getContext('2d').drawImage(c1,n.x,n.y,n.w,n.h,0,0,n.w,n.h); $('ncWrap').hidden=false}else $('ncWrap').hidden=true;
   cv.onclick=e=>{const b=cv.getBoundingClientRect(),sx=cv.width/b.width,x=(e.clientX-b.left)*sx,y=(e.clientY-b.top)*sx;
     for(let i=0;i<NI;i++){const it=r.items[i]; if(!it.box)continue; const bx=it.box; if(x>=bx.x-6&&x<=bx.x+bx.w+6&&y>=bx.y&&y<=bx.y+bx.h){it.state=it.state==='checked'?'empty':'checked';it.manual=true;r.edited=true;r.auto=false;updateDetailDynamic(r);drawOverlay(r);renderList();renderStats();break}}};

@@ -1,0 +1,876 @@
+<!doctype html>
+<html lang="fil">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>201 File Checker</title>
+<style>
+/* Layout: setup sidebar on the left, review workspace on the right; stacks on narrow screens.
+   Palette: paper-grey neutrals with a pen-blue accent; green/amber/red only for document state. */
+:root{
+  --bg:#eef0f3; --panel:#ffffff; --panel2:#f6f7f9; --line:#d8dce3; --fg:#1b2430; --muted:#5d6877;
+  --accent:#1f5a8a; --accent-fg:#ffffff; --accent-soft:#e1edf7;
+  --ok:#1f7a3d; --ok-soft:#dcf0e2; --warn:#9a5b00; --warn-soft:#fbecc9; --bad:#b3261e; --bad-soft:#f8dedb;
+  --shadow:0 1px 2px rgba(20,30,45,.08);
+  --font:"Segoe UI",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12171e; --panel:#1a212b; --panel2:#202935; --line:#303b4a; --fg:#e6eaf0; --muted:#98a4b4;
+  --accent:#6fb0e6; --accent-fg:#0b1a28; --accent-soft:#1d3347;
+  --ok:#62c283; --ok-soft:#173523; --warn:#e6b45c; --warn-soft:#3a2d10; --bad:#f08a82; --bad-soft:#40201e; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171e; --panel:#1a212b; --panel2:#202935; --line:#303b4a; --fg:#e6eaf0; --muted:#98a4b4;
+  --accent:#6fb0e6; --accent-fg:#0b1a28; --accent-soft:#1d3347;
+  --ok:#62c283; --ok-soft:#173523; --warn:#e6b45c; --warn-soft:#3a2d10; --bad:#f08a82; --bad-soft:#40201e; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 var(--font)}
+button,input,select{font:inherit;color:inherit}
+h1,h2,h3{margin:0;font-weight:600}
+.top{display:flex;align-items:center;gap:16px;padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.top h1{font-size:17px;letter-spacing:.1px}
+.top .sub{color:var(--muted);font-size:12.5px}
+.top .sp{flex:1}
+.priv{font-size:12px;color:var(--ok);background:var(--ok-soft);padding:3px 9px;border-radius:99px}
+.app{display:grid;grid-template-columns:340px minmax(0,1fr);gap:16px;padding:16px;align-items:start}
+@media (max-width:980px){.app{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+.side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.card>.hd{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.card>.hd h2{font-size:13.5px}
+.card>.bd{padding:12px}
+.step{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent);color:var(--accent-fg);font-size:11.5px;font-weight:700}
+.step.done{background:var(--ok);color:#fff}
+.drop{display:block;border:1.5px dashed var(--line);border-radius:8px;padding:14px;text-align:center;color:var(--muted);background:var(--panel2);cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--fg)}
+.drop b{color:var(--fg)}
+.btn{border:1px solid var(--line);background:var(--panel);padding:6px 12px;border-radius:6px;cursor:pointer}
+.btn:hover{background:var(--panel2)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff;font-weight:600}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{padding:3px 9px;font-size:12.5px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--muted)}
+.small{font-size:12.5px}
+.mt{margin-top:10px}
+select,input[type=text],input[type=search]{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0}
+details.cfg summary{cursor:pointer;font-weight:600;font-size:13px;padding:2px 0}
+table.map{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+table.map td,table.map th{padding:3px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+table.map select{width:100%}
+.bar{height:8px;background:var(--panel2);border:1px solid var(--line);border-radius:99px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--accent);width:0}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+.stat b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
+.stat span{font-size:11.5px;color:var(--muted)}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);padding:0 8px}
+.tab{padding:9px 14px;border:0;background:none;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted);font-weight:600}
+.tab[aria-selected=true]{color:var(--fg);border-bottom-color:var(--accent)}
+.work{min-width:0}
+.review{display:grid;grid-template-columns:280px minmax(0,1fr);min-height:560px}
+@media (max-width:760px){.review{grid-template-columns:minmax(0,1fr)}}
+.listcol{border-right:1px solid var(--line);display:flex;flex-direction:column;min-width:0;max-height:78vh}
+.filters{display:flex;gap:4px;flex-wrap:wrap;padding:8px}
+.chip{border:1px solid var(--line);background:var(--panel);border-radius:99px;padding:2px 9px;font-size:12px;cursor:pointer}
+.chip[aria-pressed=true]{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+.list{overflow:auto;flex:1}
+.item{display:flex;gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid var(--line);cursor:pointer;min-width:0}
+.item:hover{background:var(--panel2)}
+.item.sel{background:var(--accent-soft)}
+.item .nm{min-width:0;flex:1}
+.item .nm b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .nm span{display:block;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pill{font-size:11px;padding:1px 7px;border-radius:99px;white-space:nowrap;font-weight:600}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.pill.idle{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+.detail{padding:12px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.dgrid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:1180px){.dgrid{grid-template-columns:minmax(0,1fr)}}
+.imgwrap{border:1px solid var(--line);border-radius:6px;background:#222;overflow:auto;max-height:76vh}
+.imgwrap canvas{display:block;width:var(--zoom,100%);max-width:none;height:auto;cursor:pointer}
+.namecrop{border:1px solid var(--line);border-radius:6px;background:#fff;overflow:hidden}
+.namecrop canvas{display:block;width:100%;height:auto}
+.field label{display:block;font-size:12px;color:var(--muted);margin-bottom:3px}
+.combo{position:relative}
+.combo input{width:100%;padding:8px 10px;font-size:15px}
+.sugs{position:absolute;z-index:5;left:0;right:0;top:100%;background:var(--panel);border:1px solid var(--line);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.18);max-height:300px;overflow:auto}
+.sug{padding:6px 10px;display:flex;gap:8px;justify-content:space-between;cursor:pointer;border-bottom:1px solid var(--line)}
+.sug:last-child{border-bottom:0}
+.sug.act,.sug:hover{background:var(--accent-soft)}
+.sug small{color:var(--muted);white-space:nowrap}
+.chosen{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
+.chosen b{font-size:15px}
+.checks{display:grid;grid-template-columns:1fr;gap:2px}
+.chk{display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:5px;cursor:pointer;user-select:none}
+.chk:hover{background:var(--panel2)}
+.chk input{width:16px;height:16px;margin:0}
+.chk .lb{flex:1;min-width:0}
+.chk .nc{font-size:11px;color:var(--muted)}
+.chk.unc{background:var(--warn-soft)}
+.chk.unk{background:var(--bad-soft)}
+.chk.nocol .lb{color:var(--muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;position:sticky;bottom:0;background:var(--panel);padding:8px 0}
+.empty{padding:40px 20px;text-align:center;color:var(--muted)}
+.tabpane{padding:12px}
+table.sum{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+table.sum th,table.sum td{border-bottom:1px solid var(--line);padding:5px 8px;text-align:right}
+table.sum th:first-child,table.sum td:first-child{text-align:left}
+table.sum thead th{background:var(--panel2);position:sticky;top:0}
+.scroll{overflow:auto;max-height:60vh}
+.note{background:var(--warn-soft);color:var(--fg);border-left:3px solid var(--warn);padding:8px 10px;border-radius:4px;font-size:13px}
+.err{background:var(--bad-soft);border-left:3px solid var(--bad);padding:8px 10px;border-radius:4px;font-size:13px}
+kbd{font-family:var(--mono);font-size:11.5px;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+@media (prefers-reduced-motion:no-preference){.bar>i{transition:width .25s}}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>201 File Checker</h1>
+  <span class="sub">Basahin ang mga litrato ng 201 checklist at awtomatikong lagyan ng ✓ ang Excel</span>
+  <span class="sp"></span>
+  <span class="priv" title="Walang ina-upload sa kahit anong server">Lahat ay ginagawa sa browser mo lang</span>
+</header>
+
+<div class="app">
+  <aside class="side">
+    <section class="card" id="cExcel">
+      <div class="hd"><span class="step" id="s1">1</span><h2>Excel na listahan ng pangalan</h2></div>
+      <div class="bd">
+        <label class="drop" id="dropX" for="fileX" tabindex="0"><b>I-drop dito ang .xlsx</b><br>o i-click para pumili<input id="fileX" type="file" accept=".xlsx" hidden></label>
+        <div id="xInfo" class="small mt" hidden></div>
+        <details class="cfg mt" id="cfgBox" hidden>
+          <summary>Mga column at kung ano ang "complete"</summary>
+          <div class="small muted mt">Aling item sa form ang papunta sa aling column ng Excel:</div>
+          <table class="map" id="mapTbl"></table>
+          <div class="small muted mt">Alin ang kailangan para maging COMPLETE:</div>
+          <table class="map" id="reqTbl"></table>
+          <label class="row small mt"><input type="checkbox" id="eitherOr" checked> Probationary O Regular ang contract (isa lang ang kailangan)</label>
+          <div class="row small mt"><span>Barangay / Police Clearance (iisang column):</span>
+            <select id="brgyRule"><option value="any" selected>Isa lang ay okay</option><option value="all">Kailangan parehong may ✓</option></select></div>
+        </details>
+      </div>
+    </section>
+
+    <section class="card" id="cPhoto">
+      <div class="hd"><span class="step" id="s2">2</span><h2>Mga litrato ng 201 checklist</h2></div>
+      <div class="bd">
+        <label class="drop" id="dropP" for="fileP" tabindex="0"><b>I-drop ang mga litrato</b><br>JPG o PNG, kahit ilang daan o libo<input id="fileP" type="file" accept="image/*" multiple hidden></label>
+        <div class="row mt small"><button class="btn sm" id="folderBtn" type="button">Pumili ng folder</button><input id="folderP" type="file" webkitdirectory multiple hidden>
+          <label class="row" style="gap:4px"><input type="checkbox" id="useFname" checked> Gamitin ang filename bilang pangalan kung tugma</label></div>
+        <div class="row mt"><button class="btn primary" id="goBtn" disabled>Simulan ang pagbasa</button><button class="btn" id="pauseBtn" hidden>I-pause</button>
+          <label class="small row" style="gap:4px">Sabay-sabay: <select id="conc"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>6</option></select></label></div>
+        <div class="mt" id="progBox" hidden>
+          <div class="bar"><i id="progBar"></i></div>
+          <div class="small muted mt" id="progTxt"></div>
+        </div>
+        <div id="ocrErr" class="err mt" hidden></div>
+      </div>
+    </section>
+
+    <section class="card" id="cExport">
+      <div class="hd"><span class="step" id="s3">3</span><h2>I-save ang resulta</h2></div>
+      <div class="bd">
+        <div class="stats" id="stats"></div>
+        <div class="row mt"><button class="btn primary" id="exportBtn" disabled>I-download ang Excel</button></div>
+        <p class="small muted mt" style="margin-bottom:0">May ✓ lang na naidagdag sa mga pinatunayan mo (Kumpirmado at Auto OK). Ang mga pangalang wala sa Excel ay idinadagdag sa dulo kapag pinili mo ang "Idagdag bilang bagong pangalan". Ang dating laman ng Excel ay hindi binubura. Para ituloy sa susunod na araw, i-upload ulit ang na-download na Excel.</p>
+      </div>
+    </section>
+  </aside>
+
+  <main class="work card">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="review">Review</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="summary">Buod</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="help">Paano gamitin</button>
+    </div>
+
+    <div id="paneReview">
+      <div class="review">
+        <div class="listcol">
+          <div class="filters" id="filters"></div>
+          <div class="list" id="list"></div>
+        </div>
+        <div class="detail" id="detail"><div class="empty">Mag-upload muna ng Excel at mga litrato.<br>Lalabas dito ang bawat litrato para ma-check mo bago i-save.</div></div>
+      </div>
+    </div>
+
+    <div id="paneSummary" class="tabpane" hidden></div>
+
+    <div id="paneHelp" class="tabpane" hidden>
+      <h3>Paano gamitin</h3>
+      <ol>
+        <li>I-upload ang Excel (REQUIREMENTS LISTING). Awtomatikong hahanapin ang column ng pangalan at ng bawat dokumento.</li>
+        <li>I-upload ang mga litrato ng checklist. Pindutin ang <b>Simulan ang pagbasa</b>.</li>
+        <li>Binabasa ng app ang pangalan sa itaas at ang bawat kahon sa checklist (may ✓ o wala).</li>
+        <li>Sa <b>Review</b>, tingnan ang litrato. Kung tama ang pangalan at mga ✓, pindutin ang <b>Kumpirmahin</b>. Kung mali, i-type ang pangalan sa search o i-click ang kahon sa litrato para baguhin ang ✓.</li>
+        <li>Kung wala sa Excel ang pangalan sa litrato, pindutin ang <b>+ Idagdag bilang bagong pangalan</b>; idadagdag ito sa dulo ng listahan kasama ang mga ✓.</li>
+        <li>I-download ang Excel. Nakalagay na ang ✓, ang <b>STATUS</b> na COMPLETE o INCOMPLETE, at may mga bagong sheet na <b>BUOD</b>, <b>KULANG</b> at <b>HINDI NAHANAP</b>.</li>
+      </ol>
+      <div class="note">Ang pagbasa ng <b>sulat-kamay na pangalan</b> ay hindi laging tama, kaya may hakbang na kumpirmasyon. Mas mabilis kung ang filename ng litrato ay ang pangalan mismo (hal. <kbd>ABAD, YANDY.jpg</kbd>) o kung nakalimbag ang pangalan.</div>
+      <p class="muted small">Tips: kuhanan ang litrato nang diretso at maliwanag, buong pahina ang kita. Ang mga litrato at Excel ay hindi lumalabas sa computer mo; walang server na tumatanggap ng datos.</p>
+    </div>
+  </main>
+</div>
+
+<script src="lib/tesseract.min.js"></script>
+<script>if(!window.Tesseract)document.write('<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"><\/script>')</script>
+<script src="lib/exceljs.min.js"></script>
+<script>if(!window.ExcelJS)document.write('<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"><\/script>')</script>
+<script>
+"use strict";
+/* ===================== Form definition ===================== */
+// The 18 lines printed on the 201 checklist, in order. g = visual group, ph = key phrase used to find the line in OCR text.
+const ITEMS=[
+ {k:'biodata',l:'Biodata',g:0,ph:'biodata',first:'biodata',kw:/BIODATA/},
+ {k:'idpic',l:'ID picture (1x1, 2x2)',g:0,ph:'idpicture',first:'id',kw:/ID\s*PIC/},
+ {k:'company',l:'Company ID (xerox)',g:0,ph:'companyid',first:'company',kw:/COMPANY\s*ID/},
+ {k:'birth',l:'Birth Certificate',g:1,ph:'birthcertificateifapplicable',first:'birth',kw:/BIRTH/},
+ {k:'marriage',l:'Marriage Contract',g:1,ph:'marriagecontractifapplicable',first:'marriage',kw:/MARRIAGE/},
+ {k:'birthdep',l:'Birth Cert. of Dependent',g:1,ph:'birthcertificateofdependentifapplicable',first:'birth',kw:null},
+ {k:'sss',l:'SSS (E1/E4)',g:2,ph:'ssstaticinformation',first:'sss',kw:/SSS/},
+ {k:'phic',l:'PhilHealth (MDR/ID)',g:2,ph:'philhealthmdrorid',first:'philhealth',kw:/PHIC|PHILHEALTH|MDR/},
+ {k:'pagibig',l:'Pag-ibig (HDMF/ID)',g:2,ph:'pagibighmdforid',first:'pagibig',kw:/PAG-?\s*IBIG|HDMF|HMDF/},
+ {k:'cedula',l:'Cedula',g:3,ph:'cedula',first:'cedula',kw:/CEDULA/},
+ {k:'brgy',l:'Barangay Clearance',g:3,ph:'barangayclearance',first:'barangay',kw:/BARANGAY|BRGY/},
+ {k:'police',l:'Police Clearance',g:3,ph:'policeclearance',first:'police',kw:/POLICE/},
+ {k:'medical',l:'Medical Exam Results',g:3,ph:'medicalexamresults',first:'medical',kw:/MEDICAL/},
+ {k:'coop',l:'Application for Coop Membership',g:4,ph:'applicationforcoopmembership',first:'application',kw:/COOP|APPLICATION|APOLICATION/},
+ {k:'authority',l:'Authority to Deduct',g:4,ph:'authoritytodeduct',first:'authority',kw:/AUTHORITY/},
+ {k:'prob',l:'Employment Contract (Probationary)',g:5,ph:'employmentcontractprobitionary',first:'employment',kw:/PROB/},
+ {k:'regular',l:'Employment Contract (Regular)',g:5,ph:'employmentcontractregular',first:'employment',kw:/REGULAR/},
+ {k:'dpc',l:'DPC form',g:6,ph:'dpcform',first:'dpc',kw:/DPC/},
+];
+const NI=ITEMS.length;
+const IDX={};ITEMS.forEach((it,i)=>IDX[it.k]=i);
+const GROUPS=[];ITEMS.forEach((it,i)=>{(GROUPS[it.g]=GROUPS[it.g]||[]).push(i)});
+const HEADER_WORDS=['bukidnon','plantationservice','cooperative','humanresource','201files'];
+
+/* ===================== State ===================== */
+const S={
+  xbuf:null, sheetName:null, headerRow:1, nameCol:2, deptCol:1, cols:[], names:[], deptNames:{},
+  mapping:{}, required:{}, existing:{}, results:[], filter:'all', sel:null, running:false, paused:false,
+  workers:[], dirty:false, lastConfirmedName:-1, ocrReady:false,
+};
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ===================== Text matching ===================== */
+function lev(a,b){
+  if(a===b)return 0; const m=a.length,n=b.length; if(!m)return n; if(!n)return m;
+  let prev=new Array(n+1),cur=new Array(n+1); for(let j=0;j<=n;j++)prev[j]=j;
+  for(let i=1;i<=m;i++){cur[0]=i;const ai=a.charCodeAt(i-1);
+    for(let j=1;j<=n;j++){const c=ai===b.charCodeAt(j-1)?0:1;cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+c)}
+    [prev,cur]=[cur,prev]}
+  return prev[n];
+}
+const sim=(a,b)=>{const L=Math.max(a.length,b.length);return L?1-lev(a,b)/L:1};
+function letters(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z]/g,'')}
+function partial(ph,text){ // best similarity of phrase against any window of text
+  if(!text)return 0; const L=ph.length; if(text.length<=L)return sim(ph,text);
+  let best=0; for(const w of [L,L+1,L-1]){ if(w<2)continue; for(let i=0;i+w<=text.length;i++){const s=sim(ph,text.substr(i,w));if(s>best)best=s;if(best===1)return 1}}
+  return best;
+}
+function normName(s){return String(s||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z, ]/g,' ').replace(/\s+/g,' ').trim()}
+function parseVariants(raw){ // possible (last, given[]) readings of a name string
+  const n=normName(raw); if(!n)return [];
+  if(n.includes(',')){const [a,...r]=n.split(','); return [{last:a.replace(/\s/g,''),given:r.join(' ').split(' ').filter(Boolean)}]}
+  const t=n.split(' ').filter(Boolean); const out=[];
+  for(let k=1;k<=Math.min(3,t.length);k++){out.push({last:t.slice(-k).join(''),given:t.slice(0,-k)})}
+  for(let k=1;k<=Math.min(2,t.length);k++){out.push({last:t.slice(0,k).join(''),given:t.slice(k)})}
+  return out;
+}
+function tokSim(q,n){ if(q.length===1)return n[0]===q?0.85:0; if(n.length===1)return q[0]===n?0.85:0; return sim(q,n)}
+function scoreVariant(v,rec){
+  const ls=sim(v.last,rec.last); let gs;
+  if(!v.given.length)gs=0.5; else{ let tot=0; for(const q of v.given){let b=0;for(const n of rec.given){const s=tokSim(q,n);if(s>b)b=s}tot+=b} gs=tot/v.given.length }
+  let sc=0.6*ls+0.4*gs; if(ls<0.6)sc*=0.75; return sc;
+}
+function rankNames(raw,limit=6){
+  const vs=parseVariants(raw); if(!vs.length||!S.names.length)return [];
+  const out=[];
+  for(let i=0;i<S.names.length;i++){const rec=S.names[i];let b=0;for(const v of vs){const s=scoreVariant(v,rec);if(s>b)b=s}
+    if(b>0.45)out.push([i,b])}
+  out.sort((a,b)=>b[1]-a[1]); return out.slice(0,limit).map(([i,s])=>({i,s}));
+}
+function searchNames(q,limit=8){
+  const toks=normName(q).replace(/,/g,' ').split(' ').filter(Boolean); if(!toks.length)return [];
+  const out=[]; for(let i=0;i<S.names.length;i++){const n=S.names[i].norm; let ok=true,sc=0;
+    for(const t of toks){const p=n.indexOf(t); if(p<0){ok=false;break} sc+=p===0?2:(n[p-1]===' '?1:0)}
+    if(ok)out.push([i,sc])}
+  out.sort((a,b)=>b[1]-a[1]||a[0]-b[0]); return out.slice(0,limit).map(([i])=>({i}));
+}
+
+/* ===================== Excel loading ===================== */
+async function loadExcel(file){
+  const buf=await file.arrayBuffer(); S.xbuf=buf; S.xname=file.name;
+  const wb=new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+  // find the sheet that has a NAMES header
+  let pick=null;
+  for(const ws of wb.worksheets){
+    for(let r=1;r<=Math.min(10,ws.rowCount);r++){const row=ws.getRow(r);
+      for(let c=1;c<=Math.min(12,ws.columnCount);c++){const v=cellText(row.getCell(c)); if(/^(NAMES?|PANGALAN|EMPLOYEE NAME)$/i.test(v.trim())){pick={ws,r,c};break}}
+      if(pick)break}
+    if(pick)break}
+  if(!pick)throw new Error('Walang column na "NAMES" sa Excel. Siguraduhing may header na NAMES.');
+  const {ws,r,c}=pick; S.sheetName=ws.name; S.headerRow=r; S.nameCol=c;
+  S.cols=[]; const hr=ws.getRow(r);
+  for(let k=c+1;k<=ws.columnCount;k++){const h=cellText(hr.getCell(k)).trim(); if(h&&!/^(TOTAL|STATUS)/i.test(h))S.cols.push({idx:k,header:h})}
+  S.deptCol=(c>1)?c-1:null;
+  S.names=[];S.existing={};
+  for(let rr=r+1;rr<=ws.rowCount;rr++){const row=ws.getRow(rr);const nm=cellText(row.getCell(c)).trim(); if(!nm)continue;
+    const vs=parseVariants(nm)[0]||{last:'',given:[]};
+    const dv=S.deptCol?row.getCell(S.deptCol).value:null;
+    const rec={row:rr,name:nm,norm:normName(nm),last:vs.last,given:vs.given,dept:(typeof dv==='number')?dv:null};
+    let have=0; for(const col of S.cols){if(cellText(row.getCell(col.idx)).trim())have++}
+    rec.have=have; S.names.push(rec)}
+  // department names (optional sheet)
+  S.deptNames={}; const dws=wb.worksheets.find(w=>/^DEPART/i.test(w.name));
+  if(dws){for(let rr=1;rr<=dws.rowCount;rr++){const a=dws.getRow(rr).getCell(1).value,b=cellText(dws.getRow(rr).getCell(2)).trim(); if(typeof a==='number'&&b)S.deptNames[a]=b}}
+  // auto map form items to Excel columns
+  S.mapping={}; for(const it of ITEMS){S.mapping[it.k]=null; if(!it.kw)continue;
+    const col=S.cols.find(cc=>it.kw.test(cc.header.toUpperCase())); if(col)S.mapping[it.k]=col.idx}
+  S.required={}; for(const col of S.cols){S.required[col.idx]=true}
+  const mc=S.mapping.marriage; if(mc)S.required[mc]=false; // "if married"
+  buildConfigUI();
+  $('xInfo').hidden=false;
+  $('xInfo').innerHTML=`<b>${esc(file.name)}</b><br>Sheet: ${esc(S.sheetName)} · ${S.names.length.toLocaleString()} pangalan · ${S.cols.length} column ng dokumento`;
+  $('cfgBox').hidden=false; $('s1').classList.add('done'); $('s1').textContent='✓';
+  // re-match any already processed photos
+  for(const r of S.results){if(r.status==='done')matchResult(r)}
+  updateUI();
+}
+function cellText(cell){const v=cell.value; if(v==null)return''; if(typeof v==='object'){ if(v.richText)return v.richText.map(t=>t.text).join(''); if(v.result!=null)return String(v.result); if(v.text!=null)return String(v.text); return''} return String(v)}
+
+function colOptions(sel){return '<option value="">— walang column —</option>'+S.cols.map(c=>`<option value="${c.idx}" ${sel===c.idx?'selected':''}>${esc(c.header)}</option>`).join('')}
+function buildConfigUI(){
+  $('mapTbl').innerHTML=ITEMS.map(it=>`<tr><td>${esc(it.l)}</td><td><select data-map="${it.k}">${colOptions(S.mapping[it.k])}</select></td></tr>`).join('');
+  $('reqTbl').innerHTML=S.cols.map(c=>`<tr><td><label class="row" style="gap:6px"><input type="checkbox" data-req="${c.idx}" ${S.required[c.idx]?'checked':''}> ${esc(c.header)}</label></td></tr>`).join('');
+}
+document.addEventListener('change',e=>{
+  const t=e.target; if(t.dataset&&t.dataset.map){S.mapping[t.dataset.map]=t.value?+t.value:null;updateUI()}
+  else if(t.dataset&&t.dataset.req){S.required[+t.dataset.req]=t.checked;updateUI()}
+  else if(t.id==='eitherOr'||t.id==='brgyRule')updateUI();
+});
+
+/* ===================== Image pipeline ===================== */
+const MAXSIDE=2000;
+async function baseCanvas(file,rot){
+  const bmp=await createImageBitmap(file,{imageOrientation:'from-image'});
+  let w=bmp.width,h=bmp.height; const s=Math.min(1,MAXSIDE/Math.max(w,h)); w=Math.round(w*s);h=Math.round(h*s);
+  const swap=rot===90||rot===270; const c=document.createElement('canvas'); c.width=swap?h:w; c.height=swap?w:h;
+  const x=c.getContext('2d',{willReadFrequently:true}); x.imageSmoothingQuality='high';
+  x.translate(c.width/2,c.height/2); x.rotate(rot*Math.PI/180); x.drawImage(bmp,-w/2,-h/2,w,h); bmp.close&&bmp.close();
+  return c;
+}
+function deskew(c,angle){
+  if(Math.abs(angle)<0.0015)return c;
+  const o=document.createElement('canvas'); o.width=c.width;o.height=c.height; const x=o.getContext('2d',{willReadFrequently:true});
+  x.fillStyle='#e8e8ee'; x.fillRect(0,0,o.width,o.height); x.imageSmoothingQuality='high';
+  x.translate(o.width/2,o.height/2); x.rotate(-angle); x.drawImage(c,-c.width/2,-c.height/2); return o;
+}
+function xform(p,angle,W,H){const dx=p.x-W/2,dy=p.y-H/2,cs=Math.cos(angle),sn=Math.sin(angle);return {x:W/2+dx*cs+dy*sn,y:H/2-dx*sn+dy*cs}}
+function binarize(c,P){
+  const W=c.width,H=c.height,d=c.getContext('2d',{willReadFrequently:true}).getImageData(0,0,W,H).data;
+  const g=new Uint8Array(W*H); for(let i=0,j=0;i<g.length;i++,j+=4)g[i]=(d[j]*77+d[j+1]*151+d[j+2]*28)>>8;
+  const W1=W+1,I=new Float64Array((W+1)*(H+1));
+  for(let y=1;y<=H;y++){let rs=0;for(let x=1;x<=W;x++){rs+=g[(y-1)*W+x-1];I[y*W1+x]=I[(y-1)*W1+x]+rs}}
+  const r=Math.max(6,Math.round(P*0.55)),bin=new Uint8Array(W*H),loose=new Uint8Array(W*H);
+  for(let y=0;y<H;y++){const y0=Math.max(0,y-r),y1=Math.min(H,y+r+1);
+    for(let x=0;x<W;x++){const x0=Math.max(0,x-r),x1=Math.min(W,x+r+1);
+      const area=(x1-x0)*(y1-y0),sum=I[y1*W1+x1]-I[y0*W1+x1]-I[y1*W1+x0]+I[y0*W1+x0];
+      const m=sum/area,v=g[y*W+x]; if(v<m-22&&v<185)bin[y*W+x]=1; if(v<m-9)loose[y*W+x]=1}}
+  return {bin,loose};
+}
+function clusters(arr,from,to,thr){ // runs of indices where arr>=thr, returns centres+widths
+  const out=[];let s=-1;
+  for(let i=from;i<=to+1;i++){const on=i<=to&&arr[i]>=thr; if(on&&s<0)s=i; else if(!on&&s>=0){out.push({mid:(s+i-1)/2,w:i-s});s=-1}}
+  return out;
+}
+function measureBox(BN,W,H,ax,yc,P){
+  const bin=BN.bin,loose=BN.loose;
+  const bw=2.7*P;
+  const x0=Math.max(0,Math.round(ax-3.5*P)),x1=Math.min(W-1,Math.round(ax+0.2*P));
+  const y0=Math.max(0,Math.round(yc-1.0*P)),y1=Math.min(H-1,Math.round(yc+1.0*P));
+  const rows=new Float32Array(H);
+  for(let y=y0;y<=y1;y++){let s=0;for(let x=x0;x<=x1;x++)s+=loose[y*W+x];rows[y]=s}
+  const hc=clusters(rows,y0,y1,0.55*bw);
+  let top=null,bot=null;
+  for(const c of hc){if(c.mid<=yc&&(top===null||c.mid>top.mid))top=c; if(c.mid>yc&&(bot===null||c.mid<bot.mid))bot=c}
+  let T=top?top.mid:yc-0.5*P,B=bot?bot.mid:yc+0.5*P; let okY=!!(top&&bot);
+  if(B-T<0.6*P||B-T>1.45*P){T=yc-0.5*P;B=yc+0.5*P;okY=false}
+  const ty=Math.round(T+2),by=Math.round(B-2); const bh=Math.max(4,by-ty);
+  const cols=new Float32Array(W);
+  for(let x=x0;x<=x1;x++){let s=0;for(let y=ty;y<=by;y++)s+=loose[y*W+x];cols[x]=s}
+  const vc=clusters(cols,x0,x1,0.72*bh);
+  const expR=ax-0.2*P; let bestPair=null,bs=1e9;
+  for(const r of vc)for(const l of vc){const wd=r.mid-l.mid; if(wd<1.8*P||wd>3.8*P)continue; const e=Math.abs(wd-bw)+0.3*Math.abs(r.mid-expR); if(e<bs){bs=e;bestPair={R:r,L:l}}}
+  let R=null,Lm=null,Rm,L,okX=false;
+  if(bestPair&&Math.abs(bestPair.R.mid-bestPair.L.mid-bw)<0.3*P){R=bestPair.R;Lm=bestPair.L;Rm=R.mid;L=Lm.mid;okX=true}
+  else{ let near=null,nd=1e9; for(const c of vc){const d=Math.abs(c.mid-expR); if(d<nd){nd=d;near=c}}
+    if(near&&nd<0.25*P){R=near;Rm=near.mid;L=Rm-bw} else {Rm=expR;L=Rm-bw} }
+  const ix0=Math.round(L+((Lm?Lm.w:3)/2)+2),ix1=Math.round(Rm-((R?R.w:3)/2)-2);
+  const iy0=ty+1,iy1=by-1; let ink=0,area=0;
+  for(let y=iy0;y<=iy1;y++)for(let x=ix0;x<=ix1;x++){area++;ink+=bin[y*W+x]}
+  const ratio=area>0?ink/area:0;
+  return {ratio,box:{x:L,y:T,w:Rm-L,h:B-T},inner:{x:ix0,y:iy0,w:ix1-ix0,h:iy1-iy0},ok:okX&&okY};
+}
+const T_CHECK=0.028,T_EMPTY=0.010;
+function classify(r){return r>=T_CHECK?'checked':(r<=T_EMPTY?'empty':'uncertain')}
+
+function lineWords(line){return (line.words||[]).filter(w=>w.text&&w.text.trim())}
+function findAnchor(line,it){
+  const ws=lineWords(line); const f=it.first;
+  for(const w of ws){const t=letters(w.text); if(!t)continue;
+    if(f.length>=4?(t.includes(f)||sim(t,f)>=0.72):(t===f||t.endsWith(f)&&t.length<=f.length+1))return w}
+  for(const w of ws){if(letters(w.text).length>=3)return w}
+  return ws[0]||null;
+}
+function parseOcr(blocks){
+  const lines=[];
+  for(const b of blocks||[])for(const p of b.paragraphs||[])for(const l of p.lines||[]){const t=letters(l.text); if(t.length>=2)lines.push({text:l.text,t,bbox:l.bbox,baseline:l.baseline,words:l.words||[]})}
+  return lines;
+}
+function matchLines(lines){
+  const cand=[];
+  lines.forEach((ln,li)=>{ITEMS.forEach((it,ii)=>{const s=partial(it.ph,ln.t); if(s>=0.68)cand.push({li,ii,s})})});
+  cand.sort((a,b)=>b.s-a.s); const usedL=new Set(),usedI=new Set(),res={};
+  for(const c of cand){if(usedL.has(c.li)||usedI.has(c.ii))continue;usedL.add(c.li);usedI.add(c.ii);res[c.ii]={li:c.li,s:c.s}}
+  return res;
+}
+function estAngle(lines){
+  const a=[];for(const l of lines){const b=l.baseline; if(b&&b.x1-b.x0>200){a.push(Math.atan2(b.y1-b.y0,b.x1-b.x0))}}
+  if(a.length<3)return 0; a.sort((x,y)=>x-y); const m=a[a.length>>1]; return Math.abs(m)<0.35?m:0;
+}
+function headerTopOf(lines){
+  let top=null;for(const l of lines){let hit=false;for(const h of HEADER_WORDS){if(partial(h,l.t)>=0.8){hit=true;break}} if(hit&&(top===null||l.bbox.y0<top))top=l.bbox.y0}
+  return top;
+}
+
+async function ocrCanvas(worker,canvas){
+  const r=await worker.recognize(canvas,{},{blocks:true});
+  return parseOcr(r.data.blocks);
+}
+async function analyzeFile(worker,file){
+  let best=null;
+  for(const rot of [0,180,90,270]){
+    const c0=await baseCanvas(file,rot); const lines=await ocrCanvas(worker,c0); const m=matchLines(lines); const n=Object.keys(m).length;
+    if(!best||n>best.n)best={rot,c0,lines,m,n};
+    if(n>=8)break;
+  }
+  const {rot,c0,lines,m}=best; const W=c0.width,H=c0.height;
+  const angle=estAngle(lines); const c1=deskew(c0,angle);
+  // geometry of each matched line in the deskewed frame
+  const anchors=new Array(NI).fill(null); const ys=[];
+  for(const [ii,mm] of Object.entries(m)){const it=ITEMS[ii],ln=lines[mm.li],w=findAnchor(ln,it); if(!w)continue;
+    const p=xform({x:w.bbox.x0,y:(w.bbox.y0+w.bbox.y1)/2},angle,W,H); anchors[ii]={x:p.x,y:p.y,s:mm.s}}
+  // row pitch from neighbours in the same group
+  const d=[];for(const g of GROUPS){for(let k=1;k<g.length;k++){const a=anchors[g[k-1]],b=anchors[g[k]];if(a&&b){const dd=b.y-a.y;if(dd>0.008*H&&dd<0.03*H)d.push(dd)}}}
+  d.sort((a,b)=>a-b); const P=d.length?d[d.length>>1]:0.0165*H;
+  // label x positions follow one straight line down the page; replace outliers (e.g. a stray symbol read before the label)
+  {const pts=anchors.filter(Boolean); if(pts.length>=4){const sl=[];for(let i=0;i<pts.length;i++)for(let j=i+1;j<pts.length;j++){if(Math.abs(pts[j].y-pts[i].y)>2*P)sl.push((pts[j].x-pts[i].x)/(pts[j].y-pts[i].y))}
+    sl.sort((u,v)=>u-v); const bs=sl.length?sl[sl.length>>1]:0; const ints=pts.map(p=>p.x-bs*p.y).sort((u,v)=>u-v); const a0=ints[ints.length>>1];
+    for(const p of pts){const fx=a0+bs*p.y; if(Math.abs(p.x-fx)>0.5*P)p.x=fx}}}
+  // fill missing anchors inside a group from a matched sibling
+  const est=new Array(NI).fill(false);
+  for(const g of GROUPS){const ref=g.find(i=>anchors[i]); if(ref==null)continue;
+    for(const i of g){if(!anchors[i]){anchors[i]={x:anchors[ref].x,y:anchors[ref].y+(g.indexOf(i)-g.indexOf(ref))*P,s:0};est[i]=true}}}
+  const bin=binarize(c1,P);
+  const items=ITEMS.map((it,i)=>{const a=anchors[i]; if(!a)return {state:'unknown',ratio:0,box:null,est:true};
+    const mb=measureBox(bin,W,H,a.x,a.y,P); let st=classify(mb.ratio); if(est[i]&&st==='empty')st='uncertain';
+    return {state:st,ratio:mb.ratio,box:mb.box,inner:mb.inner,est:est[i],located:mb.ok}});
+  // header / name
+  let ht=headerTopOf(lines); let nameText='',nameCrop=null;
+  if(ht!=null){const hp=xform({x:W/2,y:ht},angle,W,H); const above=lines.filter(l=>l.bbox.y1<ht-2&&l.bbox.x1-l.bbox.x0>20);
+    nameText=above.map(l=>l.text.trim()).join(' ').replace(/\s+/g,' ').trim();
+    let x0=0.2*W,x1=0.8*W,y0=Math.max(0,hp.y-0.12*H),y1=Math.max(10,hp.y-6);
+    if(above.length){const pts=[];for(const l of above){for(const [px,py] of [[l.bbox.x0,l.bbox.y0],[l.bbox.x1,l.bbox.y0],[l.bbox.x0,l.bbox.y1],[l.bbox.x1,l.bbox.y1]])pts.push(xform({x:px,y:py},angle,W,H))}
+      x0=Math.min(...pts.map(p=>p.x))-30;x1=Math.max(...pts.map(p=>p.x))+30;y0=Math.min(...pts.map(p=>p.y))-18;y1=Math.max(...pts.map(p=>p.y))+18}
+    x0=Math.max(0,x0);y0=Math.max(0,y0);x1=Math.min(W,x1);y1=Math.min(hp.y-2,y1);
+    if(x1-x0>40&&y1-y0>12)nameCrop={x:x0,y:y0,w:x1-x0,h:y1-y0}}
+  return {rot,angle,W,H,P,items,nameText,nameCrop,found:best.n};
+}
+
+/* ===================== Processing queue ===================== */
+function mkResult(file){return {id:S.results.length,file,fileName:file.name,status:'queued',items:null,cands:[],match:null,matchSrc:null,decision:'pending',edited:false,note:''}}
+function addFiles(files){
+  const have=new Set(S.results.map(r=>r.fileName+'|'+r.file.size+'|'+r.file.lastModified));
+  const imgs=[...files].filter(f=>/^image\//.test(f.type)||/\.(jpe?g|png|webp|bmp)$/i.test(f.name)).sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true}));
+  let added=0; for(const f of imgs){const k=f.name+'|'+f.size+'|'+f.lastModified; if(have.has(k))continue; have.add(k); S.results.push(mkResult(f)); added++}
+  if(added){$('s2').classList.add('done');$('s2').textContent='✓'}
+  updateUI(); return added;
+}
+let _libP=null;
+async function libPaths(){ // use the local lib folder if it was uploaded, otherwise fall back to a public CDN
+  if(_libP)return _libP; let local=false;
+  try{const r=await fetch('lib/eng.traineddata.gz',{method:'HEAD'}); local=r.ok}catch(e){}
+  _libP=local?{worker:new URL('lib/worker.min.js',location.href).href,core:new URL('lib/',location.href).href,lang:new URL('lib',location.href).href}
+    :{worker:'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',core:'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.0/',lang:'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int'};
+  return _libP;
+}
+async function ensureWorkers(n){
+  while(S.workers.length<n){
+    const P=await libPaths();
+    const w=await Tesseract.createWorker('eng',1,{workerPath:P.worker,corePath:P.core,langPath:P.lang,gzip:true,cacheMethod:'none',logger:()=>{}});
+    S.workers.push(w);
+  }
+  S.ocrReady=true;
+}
+async function runQueue(){
+  if(S.running)return; S.running=true;S.paused=false; $('goBtn').disabled=true; $('pauseBtn').hidden=false; $('pauseBtn').textContent='I-pause'; $('progBox').hidden=false; $('ocrErr').hidden=true;
+  const n=+$('conc').value; const t0=Date.now(); let doneAtStart=S.results.filter(r=>r.status==='done'||r.status==='error').length;
+  try{
+    $('progTxt').textContent='Hinahanda ang OCR engine…'; await ensureWorkers(n);
+  }catch(e){ $('ocrErr').hidden=false; $('ocrErr').textContent='Hindi ma-load ang OCR engine: '+(e.message||e)+'. Siguraduhing binubuksan ang app mula sa web link (hindi direkta mula sa file) at kumpleto ang folder na "lib".'; S.running=false;$('goBtn').disabled=false;$('pauseBtn').hidden=true;return}
+  let next=0;
+  const pending=()=>S.results.filter(r=>r.status==='queued');
+  const loop=async(w)=>{
+    while(!S.paused){const r=S.results.find(x=>x.status==='queued'); if(!r)break; r.status='processing';
+      try{const a=await analyzeFile(w,r.file); Object.assign(r,a,{status:'done'}); matchResult(r)}
+      catch(e){r.status='error';r.note=String(e.message||e)}
+      const done=S.results.filter(x=>x.status==='done'||x.status==='error').length-doneAtStart, total=done+pending().length+S.results.filter(x=>x.status==='processing').length;
+      const el=(Date.now()-t0)/1000,rate=done/el,left=pending().length+S.results.filter(x=>x.status==='processing').length;
+      $('progBar').style.width=(100*done/Math.max(1,total))+'%';
+      $('progTxt').textContent=`${done.toLocaleString()} / ${total.toLocaleString()} nabasa · mga ${fmtEta(left/Math.max(rate,0.01))} pa`;
+      scheduleUI();
+    }
+  };
+  await Promise.all(S.workers.slice(0,n).map(loop));
+  S.running=false; $('pauseBtn').hidden=true; $('goBtn').disabled=!S.results.some(r=>r.status==='queued');
+  $('progTxt').textContent=S.paused?'Naka-pause.':'Tapos na ang pagbasa. Simulan na ang review.';
+  S.paused=false; updateUI();
+}
+function fmtEta(s){if(!isFinite(s))return '—'; if(s<90)return Math.round(s)+' seg'; if(s<5400)return Math.round(s/60)+' min'; return (s/3600).toFixed(1)+' oras'}
+
+/* name matching for a processed result */
+function matchResult(r){
+  r.cands=[]; let cand=[];
+  if($('useFname').checked){const base=r.fileName.replace(/\.[^.]+$/,'').replace(/[_\-\d()]+$/,'').replace(/[_]+/g,' '); const fc=rankNames(base,3); if(fc.length&&fc[0].s>=0.82)cand=fc.map(c=>({...c,src:'file'}))}
+  if(!cand.length&&r.nameText){cand=rankNames(r.nameText,6).map(c=>({...c,src:'ocr'}))}
+  r.cands=cand;
+  if(r.decision==='pending'&&!r.edited){
+    const top=cand[0],second=cand[1];
+    if(top&&top.s>=0.88&&(!second||top.s-second.s>=0.05)){r.match=top.i;r.matchSrc=top.src}
+    else{r.match=null;r.matchSrc=null}
+  }
+  r.auto=(r.match!=null&&r.matchSrc&&r.decision==='pending'&&r.items&&r.found>=10&&r.items.every(i=>i.state!=='uncertain'&&i.state!=='unknown')&&((r.cands[0]&&r.cands[0].s>=0.9)||r.matchSrc==='file'));
+}
+function isCounted(r){return r.decision==='confirmed'||(r.decision==='pending'&&r.auto&&r.match!=null)}
+function stateOf(r,i){const s=r.items[i].state; return s==='checked'}
+
+/* ===================== Effective document status ===================== */
+function mergedChecks(){ // per names index -> Set of excel col idx with a check (existing + new)
+  const m=new Map();
+  for(const r of S.results){ if(r.status!=='done'||!isCounted(r)||r.match==null)continue;
+    const set=m.get(r.match)||new Set(); const byCol={};
+    ITEMS.forEach((it,i)=>{const c=S.mapping[it.k]; if(!c)return; (byCol[c]=byCol[c]||[]).push(r.items[i].state==='checked')});
+    for(const [c,arr] of Object.entries(byCol)){ const rule=(ITEMS.filter(it=>S.mapping[it.k]==c).some(it=>it.k==='brgy')&&arr.length>1)?$('brgyRule').value:'any';
+      const ok=rule==='all'?arr.every(Boolean):arr.some(Boolean); if(ok)set.add(+c)}
+    m.set(r.match,set)}
+  return m;
+}
+function requiredSpec(){
+  const eo=$('eitherOr').checked, pc=S.mapping.prob, rc=S.mapping.regular;
+  const pair=(eo&&pc&&rc&&pc!==rc&&S.required[pc]&&S.required[rc])?[pc,rc]:null;
+  const all=S.cols.filter(c=>S.required[c.idx]&&(!pair||(c.idx!==pc&&c.idx!==rc))).map(c=>c.idx);
+  return {all,pair};
+}
+function computeStatus(){
+  const merged=mergedChecks(),spec=requiredSpec(); const info=[];
+  const ws=null; // existing checks come from S.existingCells
+  for(let i=0;i<S.names.length;i++){
+    if(S.names[i].isNew&&!isUsedNew(i)){info.push({have:new Set(),missing:[],complete:false,total:0,skip:true});continue}
+    const have=new Set(S.names[i].cells||[]); const add=merged.get(i); if(add)for(const c of add)have.add(c);
+    const missing=[]; for(const c of spec.all)if(!have.has(c))missing.push(c);
+    if(spec.pair&&!(have.has(spec.pair[0])||have.has(spec.pair[1])))missing.push(-1);
+    info.push({have,missing,complete:missing.length===0,total:S.cols.filter(c=>have.has(c.idx)).length})}
+  return {info,spec};
+}
+function colName(idx){const c=S.cols.find(x=>x.idx===idx);return idx===-1?'EMPLOYMENT CONTRACT (PROB/REGULAR)':(c?c.header:'?')}
+
+/* ===================== UI: list, detail ===================== */
+let rafUI=0;function scheduleUI(){if(!rafUI)rafUI=requestAnimationFrame(()=>{rafUI=0;renderList();renderStats()})}
+function statusOf(r){
+  if(r.status==='queued')return {t:'Nakapila',c:'idle',k:'queued'};
+  if(r.status==='processing')return {t:'Binabasa…',c:'idle',k:'queued'};
+  if(r.status==='error')return {t:'Error',c:'bad',k:'review'};
+  if(r.decision==='confirmed')return {t:'Kumpirmado',c:'ok',k:'confirmed'};
+  if(r.decision==='notfound')return {t:'Wala sa listahan',c:'bad',k:'notfound'};
+  if(r.decision==='skipped')return {t:'Nilaktawan',c:'idle',k:'skipped'};
+  if(r.auto)return {t:'Auto OK',c:'ok',k:'auto'};
+  return {t:'I-review',c:'warn',k:'review'};
+}
+const FILTERS=[['all','Lahat'],['review','I-review'],['auto','Auto OK'],['confirmed','Kumpirmado'],['notfound','Wala sa listahan']];
+function renderFilters(){
+  $('filters').innerHTML=FILTERS.map(([k,l])=>{const n=k==='all'?S.results.length:S.results.filter(r=>statusOf(r).k===k).length;
+    return `<button class="chip" data-f="${k}" aria-pressed="${S.filter===k}">${l} ${n}</button>`}).join('');
+}
+function renderList(){
+  renderFilters();
+  const rows=S.results.filter(r=>S.filter==='all'||statusOf(r).k===S.filter);
+  const shown=rows.slice(0,1500);
+  $('list').innerHTML=shown.map(r=>{const st=statusOf(r); const nm=r.match!=null?S.names[r.match].name:(r.status==='done'?'(walang tugmang pangalan)':'—');
+    const cnt=r.items?r.items.filter(i=>i.state==='checked').length:'';
+    return `<div class="item ${S.sel===r.id?'sel':''}" data-id="${r.id}"><div class="nm"><b>${esc(nm)}</b><span>${esc(r.fileName)}${cnt!==''?' · '+cnt+' ✓':''}</span></div><span class="pill ${st.c}">${st.t}</span></div>`}).join('')
+    +(rows.length>shown.length?`<div class="empty small">… at ${rows.length-shown.length} pa. Gamitin ang filter.</div>`:'')
+    +(!rows.length?`<div class="empty small">Wala pa rito.</div>`:'');
+}
+function renderStats(){
+  const done=S.results.filter(r=>r.status==='done').length;
+  const counted=S.results.filter(r=>r.status==='done'&&isCounted(r)).length;
+  const rev=S.results.filter(r=>statusOf(r).k==='review').length;
+  const {info}=S.names.length?computeStatus():{info:[]};
+  const comp=info.filter(x=>x.complete).length;
+  $('stats').innerHTML=`<div class="stat"><b>${S.results.length.toLocaleString()}</b><span>litrato</span></div>
+   <div class="stat"><b>${counted.toLocaleString()}</b><span>handa i-save</span></div>
+   <div class="stat"><b>${rev.toLocaleString()}</b><span>i-review pa</span></div>
+   <div class="stat"><b>${comp.toLocaleString()}</b><span>COMPLETE sa Excel</span></div>`;
+  $('exportBtn').disabled=!(S.xbuf);
+  $('goBtn').disabled=S.running||!S.results.some(r=>r.status==='queued')||!S.xbuf;
+  if(!S.xbuf&&S.results.length)$('goBtn').title='Mag-upload muna ng Excel';
+}
+function updateUI(){for(const r of S.results)if(r.status==='done')matchResult(r); computeExistingCells(); renderList();renderStats();if($('paneSummary').hidden===false)renderSummary();renderDetail()}
+function computeExistingCells(){ // cache which excel columns already have values per name (from loaded workbook buffer snapshot)
+  // existing cells are read once in loadExcel via S.names[i].cells (set lazily below)
+}
+
+/* detail view */
+let detailToken=0, curPage=null;
+async function renderDetail(force){
+  const r=S.results.find(x=>x.id===S.sel); const el=$('detail');
+  if(!r){el.innerHTML=`<div class="empty">${S.results.length?'Pumili ng litrato sa kaliwa.':'Mag-upload muna ng Excel at mga litrato.<br>Lalabas dito ang bawat litrato para ma-check mo bago i-save.'}</div>`;return}
+  if(r.status!=='done'){el.innerHTML=`<div class="empty">${r.status==='error'?'May error sa pagbasa ng litratong ito: '+esc(r.note):'Hindi pa nababasa ang litratong ito.'}</div>`;return}
+  const key=r.id+'|'+(force?Math.random():'');
+  if(el.dataset.rid==r.id&&!force){updateDetailDynamic(r);return}
+  el.dataset.rid=r.id;
+  const idxPos=S.results.filter(x=>S.filter==='all'||statusOf(x).k===S.filter);
+  el.innerHTML=`
+   <div class="row"><b style="font-size:15px;min-width:0;overflow-wrap:anywhere">${esc(r.fileName)}</b><span class="sp" style="flex:1"></span>
+     <button class="btn sm" id="prevBtn">← Nauna</button><button class="btn sm" id="nextBtn">Susunod →</button></div>
+   <div class="dgrid">
+     <div style="min-width:0"><div class="imgwrap"><canvas id="pageCv"></canvas></div><div class="row small mt"><label class="row" style="gap:6px">Zoom <input type="range" id="zoom" min="100" max="300" value="100" step="10"></label></div><div class="small muted">I-click ang kahon sa litrato para palitan ang ✓. Berde = may ✓, dilaw = hindi sigurado, abo = wala.</div></div>
+     <div style="min-width:0;display:flex;flex-direction:column;gap:12px">
+       <div class="namecrop" id="ncWrap"><canvas id="nameCv"></canvas></div>
+       <div class="field"><label>Pangalan sa Excel (i-type para maghanap)</label>
+         <div class="combo"><input id="nameQ" type="search" autocomplete="off" placeholder="hal. abad yandy"><div class="sugs" id="sugs" hidden></div></div>
+         <div class="small muted mt" id="ocrTxt"></div></div>
+       <div class="chosen" id="chosen"></div>
+       <div class="field"><button class="btn sm" id="newBtn" type="button">+ Wala sa Excel? Idagdag bilang bagong pangalan</button>
+         <div id="newBox" class="row mt" hidden><input id="newName" type="text" style="flex:1" placeholder="APELYIDO, UNANG PANGALAN GITNA"><button class="btn primary sm" id="newOk" type="button">Idagdag at kumpirmahin</button></div>
+         <div class="small muted mt" id="newHint" hidden>Isusulat ito sa dulo ng Excel kasama ang mga ✓ sa litrato. Gamitin ang format na APELYIDO, UNANG PANGALAN.</div></div>
+       <div class="checks" id="checks"></div>
+       <div class="actions"><button class="btn ok" id="okBtn">Kumpirmahin</button><button class="btn" id="nfBtn">Wala sa listahan</button><button class="btn" id="skBtn">Laktawan</button></div>
+     </div>
+   </div>`;
+  $('zoom').oninput=e=>{$('pageCv').style.setProperty('--zoom',e.target.value+'%')};
+  const token=++detailToken; drawPage(r,token); updateDetailDynamic(r);
+  $('prevBtn').onclick=()=>step(-1); $('nextBtn').onclick=()=>step(1);
+  $('newBtn').onclick=()=>{ $('newBox').hidden=false;$('newHint').hidden=false; const q=$('nameQ').value.trim()||r.nameText||''; $('newName').value=q.toUpperCase(); $('newName').focus(); $('newName').select()};
+  const addNew=()=>{const nm=$('newName').value.trim().replace(/\s+/g,' ').toUpperCase(); if(!nm)return; addNewName(r,nm)};
+  $('newOk').onclick=addNew; $('newName').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addNew()}});
+  $('okBtn').onclick=()=>decide(r,'confirmed'); $('nfBtn').onclick=()=>decide(r,'notfound'); $('skBtn').onclick=()=>decide(r,'skipped');
+  const q=$('nameQ'); q.addEventListener('input',()=>showSugs(r)); q.addEventListener('focus',()=>showSugs(r));
+  q.addEventListener('keydown',e=>sugKey(e,r));
+  document.addEventListener('click',closeSugsOutside);
+}
+function closeSugsOutside(e){const s=$('sugs'); if(s&&!e.target.closest('.combo'))s.hidden=true}
+let sugList=[],sugAct=0;
+function showSugs(r){
+  const q=$('nameQ').value.trim(); let list;
+  if(q)list=searchNames(q,8).map(x=>({i:x.i})); else{
+    list=r.cands.map(c=>({i:c.i,s:c.s}));
+    // alphabetical neighbours of the last confirmed person
+    if(S.lastConfirmedName>=0){const seen=new Set(list.map(x=>x.i)); for(let k=S.lastConfirmedName+1;k<S.names.length&&list.length<8;k++){if(!seen.has(k)&&!S.names[k].taken)list.push({i:k,next:true})}}
+  }
+  sugList=list;sugAct=0; const box=$('sugs'); if(!list.length){box.hidden=true;return}
+  box.innerHTML=list.map((x,j)=>{const n=S.names[x.i];const tag=x.s!=null?Math.round(x.s*100)+'%':(x.next?'kasunod':'');
+    return `<div class="sug ${j===0?'act':''}" data-i="${x.i}"><span>${esc(n.name)}</span><small>${tag}${n.dept!=null&&S.deptNames[n.dept]?' · '+esc(S.deptNames[n.dept]):''}</small></div>`}).join('');
+  box.hidden=false;
+  box.onmousedown=e=>{const d=e.target.closest('.sug'); if(d){e.preventDefault();pickName(r,+d.dataset.i)}};
+}
+function sugKey(e,r){
+  const box=$('sugs'); if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault(); if(box.hidden)showSugs(r); sugAct=(sugAct+(e.key==='ArrowDown'?1:-1)+sugList.length)%Math.max(1,sugList.length);
+    [...box.children].forEach((c,j)=>c.classList.toggle('act',j===sugAct)); box.children[sugAct]&&box.children[sugAct].scrollIntoView({block:'nearest'})}
+  else if(e.key==='Enter'){e.preventDefault(); if(!box.hidden&&sugList[sugAct])pickName(r,sugList[sugAct].i)}
+  else if(e.key==='Escape'){box.hidden=true}
+}
+function addNewName(r,nm){
+  const norm=normName(nm); let idx=S.names.findIndex(n=>n.norm===norm);
+  if(idx<0){const vs=parseVariants(nm)[0]||{last:'',given:[]}; S.names.push({row:null,name:nm,norm,last:vs.last,given:vs.given,dept:null,have:0,cells:[],isNew:true}); idx=S.names.length-1}
+  r.match=idx;r.matchSrc='manual';r.edited=true;r.auto=false; decide(r,'confirmed');
+}
+function isUsedNew(i){return S.results.some(r=>r.match===i&&r.status==='done'&&(r.decision==='confirmed'||(r.decision==='pending'&&r.auto)))}
+function pickName(r,i){r.match=i;r.matchSrc='manual';r.edited=true; if(r.decision==='notfound'||r.decision==='skipped')r.decision='pending'; $('sugs').hidden=true;$('nameQ').value='';updateDetailDynamic(r);renderList();renderStats(); const ok=$('okBtn'); ok&&ok.focus()}
+function updateDetailDynamic(r){
+  if(!$('chosen'))return; const st=statusOf(r);
+  $('ocrTxt').innerHTML=r.nameText?`Nabasa ng OCR sa itaas: <kbd>${esc(r.nameText)}</kbd>`:'Walang nabasang pangalan sa itaas ng form.';
+  const n=r.match!=null?S.names[r.match]:null;
+  let dup=''; if(n){const others=S.results.filter(x=>x.id!==r.id&&x.match===r.match&&x.status==='done'&&x.decision!=='notfound'&&x.decision!=='skipped'); if(others.length)dup=`<div class="small" style="color:var(--warn)">Pareho ring pangalan sa ${others.length} ibang litrato (pagsasamahin ang mga ✓).</div>`}
+  $('chosen').innerHTML=n?`<div class="small muted">Napiling pangalan ${r.matchSrc==='file'?'(mula sa filename)':r.matchSrc==='ocr'?'(hula ng OCR)':r.matchSrc==='manual'?'(pinili mo)':''}</div><b>${esc(n.name)}</b><div class="small muted">${n.isNew?'<b style="color:var(--warn)">BAGONG PANGALAN</b> · idadagdag sa dulo ng Excel':''}${n.dept!=null?'Dept: '+esc(S.deptNames[n.dept]||n.dept)+' · ':''}Nasa Excel na: ${n.have} ✓</div>${dup}`
+    :`<div class="small muted">Pangalan</div><b style="color:var(--bad)">Wala pang napiling pangalan</b><div class="small muted">I-type ang pangalan sa itaas para hanapin.</div>`;
+  $('checks').innerHTML=ITEMS.map((it,i)=>{const s=r.items[i].state; const mapped=!!S.mapping[it.k];
+    return `<label class="chk ${s==='uncertain'?'unc':''} ${s==='unknown'?'unk':''} ${mapped?'':'nocol'}"><input type="checkbox" data-ci="${i}" ${s==='checked'?'checked':''}><span class="lb">${esc(it.l)}</span><span class="nc">${s==='uncertain'?'hindi sigurado':s==='unknown'?'hindi nahanap':(mapped?'':'walang column')}</span></label>`}).join('');
+  $('checks').onchange=e=>{const i=+e.target.dataset.ci; r.items[i].state=e.target.checked?'checked':'empty'; r.items[i].manual=true; r.edited=true; r.auto=false; updateDetailDynamic(r);drawOverlayOnly(r);renderList();renderStats()};
+  $('okBtn').disabled=r.match==null; $('okBtn').textContent=r.decision==='confirmed'?'Nakumpirma na ✓':'Kumpirmahin';
+}
+async function drawPage(r,token){
+  const cv=$('pageCv'); if(!cv)return;
+  const c0=await baseCanvas(r.file,r.rot); const c1=deskew(c0,r.angle); if(token!==detailToken)return;
+  curPage=c1; cv.width=c1.width;cv.height=c1.height; drawOverlay(r);
+  const nc=$('nameCv'); if(r.nameCrop){const n=r.nameCrop; nc.width=Math.round(n.w);nc.height=Math.round(n.h); nc.getContext('2d').drawImage(c1,n.x,n.y,n.w,n.h,0,0,n.w,n.h); $('ncWrap').hidden=false}else $('ncWrap').hidden=true;
+  cv.onclick=e=>{const b=cv.getBoundingClientRect(),sx=cv.width/b.width,x=(e.clientX-b.left)*sx,y=(e.clientY-b.top)*sx;
+    for(let i=0;i<NI;i++){const it=r.items[i]; if(!it.box)continue; const bx=it.box; if(x>=bx.x-6&&x<=bx.x+bx.w+6&&y>=bx.y&&y<=bx.y+bx.h){it.state=it.state==='checked'?'empty':'checked';it.manual=true;r.edited=true;r.auto=false;updateDetailDynamic(r);drawOverlay(r);renderList();renderStats();break}}};
+}
+function drawOverlayOnly(r){if(curPage)drawOverlay(r)}
+function drawOverlay(r){
+  const cv=$('pageCv'); if(!cv||!curPage)return; const x=cv.getContext('2d'); x.drawImage(curPage,0,0);
+  x.lineWidth=Math.max(2,cv.width/600); x.font=`${Math.round(cv.width/70)}px sans-serif`;
+  r.items.forEach((it,i)=>{if(!it.box)return;const b=it.box;
+    const col=it.state==='checked'?'#1fae52':it.state==='uncertain'?'#f0a500':'#8a94a3';
+    x.strokeStyle=col;x.fillStyle=it.state==='checked'?'rgba(31,174,82,.28)':it.state==='uncertain'?'rgba(240,165,0,.30)':'rgba(120,130,145,0)';
+    x.fillRect(b.x,b.y,b.w,b.h);x.strokeRect(b.x,b.y,b.w,b.h)});
+}
+function decide(r,d){
+  if(d==='confirmed'&&r.match==null)return; r.decision=d; r.edited=true;
+  if(d==='confirmed'){S.lastConfirmedName=r.match; S.dirty=true}
+  if(d==='notfound')S.dirty=true;
+  goNextPending(r); updateUI();
+}
+function listFor(){return S.results.filter(r=>S.filter==='all'||statusOf(r).k===S.filter)}
+function step(dir){const l=listFor(); const i=l.findIndex(r=>r.id===S.sel); const n=l[Math.max(0,Math.min(l.length-1,i+dir))]; if(n)select(n.id)}
+function goNextPending(cur){
+  const list=S.results; let start=list.findIndex(r=>r.id===cur.id);
+  for(let k=1;k<=list.length;k++){const r=list[(start+k)%list.length]; if(r.status==='done'&&(r.decision==='pending')&&!r.auto){select(r.id);return}}
+  for(let k=1;k<=list.length;k++){const r=list[(start+k)%list.length]; if(r.status==='done'&&r.decision==='pending'){select(r.id);return}}
+}
+function select(id){S.sel=id; renderList(); renderDetail(); const el=document.querySelector('.item.sel'); el&&el.scrollIntoView({block:'nearest'})}
+
+/* ===================== Summary tab ===================== */
+function renderSummary(){
+  const el=$('paneSummary'); if(!S.names.length){el.innerHTML='<div class="empty">I-upload muna ang Excel.</div>';return}
+  const all=computeStatus(); const spec=all.spec; const info=all.info.filter(x=>!x.skip); const byDept=new Map();
+  S.names.filter((n,i)=>!all.info[i].skip).forEach((n,i)=>{const k=n.dept==null?-1:n.dept; const o=byDept.get(k)||{t:0,c:0,any:0}; o.t++; if(info[i].complete)o.c++; if(info[i].total>0)o.any++; byDept.set(k,o)});
+  const rows=[...byDept.entries()].sort((a,b)=>a[0]-b[0]);
+  const tot=info.length,comp=info.filter(x=>x.complete).length,any=info.filter(x=>x.total>0).length;
+  const docCounts=S.cols.map(c=>({h:c.header,n:info.filter(x=>x.have.has(c.idx)).length}));
+  el.innerHTML=`<div class="stats"><div class="stat"><b>${tot.toLocaleString()}</b><span>empleyado sa Excel</span></div><div class="stat"><b style="color:var(--ok)">${comp.toLocaleString()}</b><span>COMPLETE</span></div>
+   <div class="stat"><b>${(tot-comp).toLocaleString()}</b><span>INCOMPLETE</span></div><div class="stat"><b>${(tot?100*comp/tot:0).toFixed(1)}%</b><span>complete</span></div><div class="stat"><b>${any.toLocaleString()}</b><span>may kahit isang ✓</span></div></div>
+   <h3 class="mt">Ayon sa department</h3><div class="scroll"><table class="sum"><thead><tr><th>Department</th><th>Kabuuan</th><th>Complete</th><th>Incomplete</th><th>%</th></tr></thead><tbody>
+   ${rows.map(([k,o])=>`<tr><td>${esc(deptLabel(k))}</td><td>${o.t}</td><td>${o.c}</td><td>${o.t-o.c}</td><td>${(100*o.c/o.t).toFixed(0)}%</td></tr>`).join('')}</tbody></table></div>
+   <h3 class="mt">Ayon sa dokumento</h3><div class="scroll"><table class="sum"><thead><tr><th>Dokumento</th><th>Meron</th><th>Wala</th></tr></thead><tbody>${docCounts.map(d=>`<tr><td>${esc(d.h)}</td><td>${d.n}</td><td>${tot-d.n}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+/* ===================== Export ===================== */
+function deptLabel(k){return (k===-1||k==null)?'(walang dept)':(S.deptNames[k]||(k===0?'(walang dept, 0)':'Dept '+k))}
+function colLetter(n){let s='';while(n>0){const m=(n-1)%26;s=String.fromCharCode(65+m)+s;n=Math.floor((n-1)/26)}return s}
+async function exportExcel(){
+  const btn=$('exportBtn'); btn.disabled=true; btn.textContent='Ginagawa ang Excel…';
+  try{
+    const wb=new ExcelJS.Workbook(); await wb.xlsx.load(S.xbuf); const ws=wb.getWorksheet(S.sheetName);
+    const mark='✓'; const merged=mergedChecks(); let writes=0;
+    // new names (in photo but not in Excel) go to the end of the list
+    const usedNew=new Set(); S.names.forEach((n,i)=>{if(n.isNew&&isUsedNew(i))usedNew.add(i)});
+    let lastRow=Math.max(S.headerRow,...S.names.filter(n=>!n.isNew).map(n=>n.row)); const itemMax=Math.max(...S.cols.map(c=>c.idx));
+    for(const i of [...usedNew].sort((a,b)=>a-b)){const rec=S.names[i]; lastRow++; rec.row=lastRow; const row=ws.getRow(lastRow),prev=ws.getRow(lastRow-1);
+      for(let col=1;col<=itemMax;col++){const pc=prev.getCell(col); if(pc.style)row.getCell(col).style=JSON.parse(JSON.stringify(pc.style))}
+      row.getCell(S.nameCol).value=rec.name}
+    const activeNames=S.names.filter((n,i)=>!n.isNew||usedNew.has(i)); let addedNew=usedNew.size;
+    for(const [ni,set] of merged){const rec=S.names[ni]; const row=ws.getRow(rec.row);
+      for(const c of set){const cell=row.getCell(c); if(!cellText(cell).trim()){cell.value=mark;cell.alignment={horizontal:'center',vertical:'middle'};writes++}}}
+    // recompute status from final cell values
+    const spec=requiredSpec(); const lastItemCol=Math.max(...S.cols.map(c=>c.idx));
+    let totCol=null,stCol=null; const hr=ws.getRow(S.headerRow);
+    for(let k=1;k<=lastItemCol+6;k++){const h=cellText(hr.getCell(k)).trim().toUpperCase(); if(h==='TOTAL ✓')totCol=k; if(h==='STATUS 201')stCol=k}
+    if(!totCol)totCol=lastItemCol+1; if(!stCol)stCol=totCol+1;
+    const hdrRef=hr.getCell(lastItemCol);
+    for(const [col,txt] of [[totCol,'TOTAL ✓'],[stCol,'STATUS 201']]){const c=hr.getCell(col); c.value=txt; c.style=JSON.parse(JSON.stringify(hdrRef.style||{})); ws.getColumn(col).width=col===stCol?14:9}
+    const L=i=>colLetter(i); const allCols=spec.all,pair=spec.pair;
+    const statusInfo=[];
+    for(const rec of activeNames){const row=ws.getRow(rec.row); const has=idx=>cellText(row.getCell(idx)).trim()!=='';
+      const total=S.cols.filter(c=>has(c.idx)).length; let ok=allCols.every(has); if(pair)ok=ok&&(has(pair[0])||has(pair[1]));
+      const first=S.cols[0].idx,last=lastItemCol;
+      row.getCell(totCol).value={formula:`COUNTA(${L(first)}${rec.row}:${L(last)}${rec.row})`,result:total};
+      const conds=allCols.map(c=>`${L(c)}${rec.row}<>""`); if(pair)conds.push(`OR(${L(pair[0])}${rec.row}<>"",${L(pair[1])}${rec.row}<>"")`);
+      row.getCell(stCol).value={formula:conds.length?`IF(AND(${conds.join(',')}),"COMPLETE","INCOMPLETE")`:'"COMPLETE"',result:ok?'COMPLETE':'INCOMPLETE'};
+      row.getCell(totCol).alignment={horizontal:'center'};row.getCell(stCol).alignment={horizontal:'center'};
+      statusInfo.push({rec,ok,total,missing:[...allCols.filter(c=>!has(c)).map(colName),...(pair&&!(has(pair[0])||has(pair[1]))?['EMPLOYMENT CONTRACT (PROB/REGULAR)']:[])]})}
+    // conditional-looking colours without conditional formatting rules (static fill so it is visible everywhere)
+    ws.addConditionalFormatting({ref:`${L(stCol)}${S.headerRow+1}:${L(stCol)}${ws.rowCount}`,rules:[
+      {type:'cellIs',operator:'equal',formulae:['"COMPLETE"'],style:{fill:{type:'pattern',pattern:'solid',bgColor:{argb:'FFC6EFCE'}},font:{color:{argb:'FF006100'}}}},
+      {type:'cellIs',operator:'equal',formulae:['"INCOMPLETE"'],style:{fill:{type:'pattern',pattern:'solid',bgColor:{argb:'FFFFC7CE'}},font:{color:{argb:'FF9C0006'}}}}]});
+    // BUOD sheet
+    ['BUOD','KULANG','HINDI NAHANAP'].forEach(n=>{const o=wb.getWorksheet(n); if(o)wb.removeWorksheet(o.id)});
+    const q=`'${S.sheetName.replace(/'/g,"''")}'`; const rng=(col)=>`${q}!$${L(col)}$${S.headerRow+1}:$${L(col)}$${ws.rowCount}`;
+    const bs=wb.addWorksheet('BUOD'); const head=r=>{r.font={bold:true};r.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF92D050'}}};
+    bs.getCell('A1').value='BUOD NG 201 FILES'; bs.getCell('A1').font={bold:true,size:14};
+    const totals={t:statusInfo.length,c:statusInfo.filter(x=>x.ok).length};
+    bs.addRow(['Kabuuang empleyado',{formula:`COUNTA(${rng(S.nameCol)})`,result:totals.t}]);
+    bs.addRow(['COMPLETE',{formula:`COUNTIF(${rng(stCol)},"COMPLETE")`,result:totals.c}]);
+    bs.addRow(['INCOMPLETE',{formula:`COUNTIF(${rng(stCol)},"INCOMPLETE")`,result:totals.t-totals.c}]);
+    bs.addRow([]); const h1=bs.addRow(['DEPARTMENT','KABUUAN','COMPLETE','INCOMPLETE','% COMPLETE']); head(h1);
+    if(S.deptCol){const depts=new Map(); statusInfo.forEach(x=>{const k=x.rec.dept==null?-1:x.rec.dept; const o=depts.get(k)||{t:0,c:0}; o.t++; if(x.ok)o.c++; depts.set(k,o)});
+      for(const [k,o] of [...depts.entries()].sort((a,b)=>a[0]-b[0])){const r=bs.rowCount+1; const crit=k===-1?`""`:k;
+        bs.addRow([deptLabel(k),
+         {formula:k===-1?`COUNTBLANK(${rng(S.deptCol)})`:`COUNTIF(${rng(S.deptCol)},${k})`,result:o.t},
+         {formula:k===-1?`COUNTIFS(${rng(S.deptCol)},"",${rng(stCol)},"COMPLETE")`:`COUNTIFS(${rng(S.deptCol)},${k},${rng(stCol)},"COMPLETE")`,result:o.c},
+         {formula:`B${r}-C${r}`,result:o.t-o.c},{formula:`IF(B${r}=0,0,C${r}/B${r})`,result:o.t?o.c/o.t:0}]); bs.getCell(`E${r}`).numFmt='0%'}}
+    bs.addRow([]); const h2=bs.addRow(['DOKUMENTO','MERON','WALA']); head(h2);
+    for(const c of S.cols){const r=bs.rowCount+1; const n=statusInfo.filter(x=>cellText(ws.getRow(x.rec.row).getCell(c.idx)).trim()!=='').length;
+      bs.addRow([c.header,{formula:`COUNTA(${rng(c.idx)})`,result:n},{formula:`B$2-B${r}`,result:totals.t-n}])}
+    bs.columns=[{width:34},{width:12},{width:12},{width:12},{width:12}];
+    // KULANG
+    const ks=wb.addWorksheet('KULANG'); const kh=ks.addRow(['PANGALAN','DEPARTMENT','KULANG NA DOKUMENTO']); head(kh);
+    for(const x of statusInfo){if(x.ok)continue; ks.addRow([x.rec.name,deptLabel(x.rec.dept),x.missing.join(', ')])}
+    ks.columns=[{width:38},{width:22},{width:90}]; ks.views=[{state:'frozen',ySplit:1}]; ks.autoFilter={from:'A1',to:'C1'};
+    // HINDI NAHANAP
+    const ns=wb.addWorksheet('HINDI NAHANAP'); const nh=ns.addRow(['FILENAME NG LITRATO','NABASA NG OCR','MAY ✓ SA']); head(nh);
+    for(const r of S.results){if(r.status==='done'&&r.decision==='notfound')ns.addRow([r.fileName,r.nameText||'',r.items.map((it,i)=>it.state==='checked'?ITEMS[i].l:null).filter(Boolean).join(', ')])}
+    ns.columns=[{width:36},{width:36},{width:90}];
+    const out=await wb.xlsx.writeBuffer(); const blob=new Blob([out],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const a=document.createElement('a'); const base=S.xname.replace(/\.xlsx$/i,''); a.href=URL.createObjectURL(blob); a.download=base+' - updated '+new Date().toISOString().slice(0,10)+'.xlsx'; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);
+    S.dirty=false; window.__lastExport={addedNew,writes,complete:totals.c,total:totals.t}; btn.textContent=`Na-download (${writes} ✓${addedNew?', '+addedNew+' bagong pangalan':''})`; setTimeout(()=>btn.textContent='I-download ang Excel',3500);
+  }catch(e){console.error(e);btn.textContent='I-download ang Excel';$('ocrErr').hidden=false;$('ocrErr').textContent='Hindi nagawa ang Excel: '+(e.message||e)}
+  btn.disabled=false;
+}
+
+/* ===================== Wiring ===================== */
+function wireDrop(box,input,handler){
+  ['dragenter','dragover'].forEach(ev=>box.addEventListener(ev,e=>{e.preventDefault();box.classList.add('over')}));
+  ['dragleave','drop'].forEach(ev=>box.addEventListener(ev,e=>{e.preventDefault();box.classList.remove('over')}));
+  box.addEventListener('drop',e=>{handler([...e.dataTransfer.files])});
+  input.addEventListener('change',()=>{handler([...input.files]);input.value=''});
+  box.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();input.click()}});
+}
+async function handleExcel(files){ if(typeof ExcelJS==='undefined'){showX('Hindi na-load ang ExcelJS. Siguraduhing na-upload ang buong folder (kasama ang folder na "lib") sa hosting, o i-check ang internet.');return}const f=files.find(x=>/\.xlsx$/i.test(x.name)); if(!f){showX('Piliin ang .xlsx file (hindi .xls).');return}
+  try{await loadExcel(f); await readExistingCells()}catch(e){showX(e.message||String(e))}}
+function showX(m){$('xInfo').hidden=false;$('xInfo').innerHTML=`<div class="err">${esc(m)}</div>`}
+async function readExistingCells(){ // which item columns already have values, per name
+  const wb=new ExcelJS.Workbook(); await wb.xlsx.load(S.xbuf); const ws=wb.getWorksheet(S.sheetName);
+  for(const n of S.names){const row=ws.getRow(n.row); n.cells=S.cols.filter(c=>cellText(row.getCell(c.idx)).trim()!=='').map(c=>c.idx); n.have=n.cells.length}
+  updateUI();
+}
+wireDrop($('dropX'),$('fileX'),handleExcel);
+wireDrop($('dropP'),$('fileP'),f=>{addFiles(f); if(S.results.length&&S.xbuf===null)$('progTxt').textContent='';});
+$('folderBtn').onclick=()=>$('folderP').click(); $('folderP').addEventListener('change',e=>{addFiles([...e.target.files]);e.target.value=''});
+$('goBtn').onclick=runQueue; $('pauseBtn').onclick=()=>{S.paused=true;$('pauseBtn').textContent='Hinihinto…'};
+$('exportBtn').onclick=exportExcel;
+$('useFname').addEventListener('change',()=>{for(const r of S.results){if(r.status==='done'&&r.decision==='pending'&&!r.edited)matchResult(r)} updateUI()});
+document.addEventListener('click',e=>{
+  const it=e.target.closest('.item'); if(it){select(+it.dataset.id);return}
+  const ch=e.target.closest('.chip'); if(ch){S.filter=ch.dataset.f;renderList();return}
+  const tb=e.target.closest('.tab'); if(tb){document.querySelectorAll('.tab').forEach(t=>t.setAttribute('aria-selected',t===tb));
+    $('paneReview').hidden=tb.dataset.tab!=='review';$('paneSummary').hidden=tb.dataset.tab!=='summary';$('paneHelp').hidden=tb.dataset.tab!=='help'; if(tb.dataset.tab==='summary')renderSummary()}
+});
+window.addEventListener('beforeunload',e=>{if(S.dirty){e.preventDefault();e.returnValue=''}});
+window.addEventListener('dragover',e=>e.preventDefault());window.addEventListener('drop',e=>e.preventDefault());
+renderFilters(); renderStats();
+window.__app={binarize,measureBox,deskew,parseOcr,matchLines,partial,letters,baseCanvas,ocrCanvas,S,ITEMS,analyzeFile,runQueue,loadExcel,addFiles,exportExcel,rankNames,computeStatus};
+</script>
+</body>
+</html>
